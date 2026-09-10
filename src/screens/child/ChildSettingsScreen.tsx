@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Switch, Alert, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useApp } from '../../context/AppContext';
 import { db } from '../../lib/database';
 import {
@@ -116,7 +116,7 @@ export const ChildSettingsScreen: React.FC = () => {
             <Text style={styles.sectionHeader}>Security</Text>
             <View style={[styles.row, styles.rowBorder]}>
               <View style={styles.rowLeft}>
-                <Ionicons name="finger-print" size={22} color="#2E7D32" style={{ marginRight: 12 }} />
+                <MaterialCommunityIcons name="face-recognition" size={22} color="#2E7D32" style={{ marginRight: 12 }} />
                 <View>
                   <Text style={styles.rowLabel}>Face ID</Text>
                   <Text style={styles.rowSubLabel}>Sign in with biometrics</Text>

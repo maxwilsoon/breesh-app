@@ -109,10 +109,28 @@ export async function isBiometricAvailable(): Promise<boolean> {
   }
 }
 
+// ─── Biometric-prompt-in-progress guard ──────────────────────────────────────
+// While a native biometric dialog (Face ID / Touch ID) is on screen, iOS pushes
+// the app to the 'inactive' AppState — indistinguishable, to AppState listeners,
+// from the user leaving the app. useAppLock consults this flag so it does NOT
+// render the privacy cover or stamp a background timestamp during a biometric
+// prompt that the app itself triggered as part of its own auth flow.
+// The short cooldown after the prompt resolves covers the window where the app
+// transitions back to 'active' as the dialog dismisses.
+
+let biometricPromptActive = false;
+let biometricPromptCooldownUntil = 0;
+const BIOMETRIC_PROMPT_COOLDOWN_MS = 800;
+
+export function isBiometricPromptInProgress(): boolean {
+  return biometricPromptActive || Date.now() < biometricPromptCooldownUntil;
+}
+
 // ─── Prompt ───────────────────────────────────────────────────────────────────
 
 export async function promptBiometric(reason: string): Promise<boolean> {
   if (Platform.OS === 'web') return false;
+  biometricPromptActive = true;
   try {
     const result = await LocalAuthentication.authenticateAsync({
       promptMessage: reason,
@@ -124,6 +142,9 @@ export async function promptBiometric(reason: string): Promise<boolean> {
   } catch (e) {
     if (__DEV__) console.warn('[biometrics] promptBiometric error:', String(e));
     return false;
+  } finally {
+    biometricPromptActive = false;
+    biometricPromptCooldownUntil = Date.now() + BIOMETRIC_PROMPT_COOLDOWN_MS;
   }
 }
 
@@ -159,13 +180,17 @@ export async function getBiometricTokenForChild(childId: string): Promise<string
   return secureGet(tokenKey(childId));
 }
 
-export async function clearBiometricForChild(childId: string): Promise<void> {
+export async function clearBiometricForChild(
+  childId: string,
+  opts?: { keepLastChild?: boolean },
+): Promise<void> {
   const stored = await secureGet(LAST_CHILD_KEY);
-  if (__DEV__) console.log('[biometrics] clearBiometricForChild', childId.slice(0, 8), 'LAST_CHILD_KEY matches:', stored === childId);
+  const dropLastChild = stored === childId && !opts?.keepLastChild;
+  if (__DEV__) console.log('[biometrics] clearBiometricForChild', childId.slice(0, 8), 'dropLastChild:', dropLastChild);
   await Promise.all([
     secureDel(tokenKey(childId)),
     secureDel(declinedKey(childId)),
-    ...(stored === childId ? [secureDel(LAST_CHILD_KEY)] : []),
+    ...(dropLastChild ? [secureDel(LAST_CHILD_KEY)] : []),
   ]);
 }
 

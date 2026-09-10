@@ -8,8 +8,10 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { CommonActions } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useStripe } from '@stripe/stripe-react-native';
 import { RootStackParamList } from '../../navigation/types';
 import { useApp } from '../../context/AppContext';
+import { supabase } from '../../lib/supabase';
 
 const GREEN = '#C8E8CB';
 const PRESETS = [25, 50, 100, 200];
@@ -18,15 +20,9 @@ type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'SafetyPool'>;
 };
 
-function describeAmountError(msg: string): string {
-  if (msg.includes('amount_below_minimum')) return 'Amount must be at least £0.50.';
-  if (msg.includes('amount_precision_invalid')) return 'Please enter a whole number or up to 2 decimal places (e.g. £5.50).';
-  if (msg.includes('invalid_amount')) return 'Please enter a valid amount.';
-  return msg;
-}
-
 export const SafetyPoolSetupScreen: React.FC<Props> = ({ navigation }) => {
-  const { setupSafetyPool } = useApp();
+  const { childId, userId, setParent } = useApp();
+  const { initPaymentSheet, presentPaymentSheet } = useStripe();
 
   const [raw, setRaw] = useState('');
   const [saving, setSaving] = useState(false);
@@ -36,17 +32,62 @@ export const SafetyPoolSetupScreen: React.FC<Props> = ({ navigation }) => {
 
   const selectPreset = (p: number) => setRaw(String(p));
 
+  // Same pattern as ParentHomeScreen's safety-pool top-up: create a PaymentIntent,
+  // present the Stripe PaymentSheet, then the stripe-webhook → stripe_complete_topup()
+  // credits parents.safety_pool_limit server-side once payment_intent.succeeded fires.
   const handleContinue = async () => {
     if (!canContinue) {
       Alert.alert('Minimum £5', 'Please enter at least £5 for your Safety Pool.');
       return;
     }
+    if (!childId) {
+      Alert.alert('Error', 'No child account linked. Please contact support.');
+      return;
+    }
+
     setSaving(true);
     try {
-      await setupSafetyPool(amount);
+      const amountPence = Math.round(amount * 100);
+      const { data, error: fnError } = await supabase.functions.invoke(
+        'create-stripe-payment-intent',
+        { body: { child_id: childId, amount: amountPence, purpose: 'safety_pool' } },
+      );
+      if (fnError || !data?.client_secret) {
+        throw new Error(fnError?.message ?? 'Could not start payment.');
+      }
+
+      const { error: initError } = await initPaymentSheet({
+        merchantDisplayName: 'Breesh',
+        paymentIntentClientSecret: data.client_secret,
+        returnURL: 'breesh://stripe-return',
+      });
+      if (initError) throw new Error(initError.message);
+
+      const { error: presentError } = await presentPaymentSheet();
+      if (presentError) {
+        if (presentError.code !== 'Canceled') {
+          Alert.alert('Payment failed', 'Your payment could not be completed. Please try again.');
+        }
+        return;
+      }
+
+      // Payment authorised — give the webhook a moment to credit the pool, then
+      // pull the fresh balance into context before handing off to the dashboard.
+      await new Promise<void>(resolve => setTimeout(resolve, 4000));
+      const { data: row } = await supabase
+        .from('parents')
+        .select('safety_pool_limit')
+        .eq('id', userId)
+        .single();
+      setParent(p => ({
+        ...p,
+        safetyPoolLimit: row?.safety_pool_limit ?? p.safetyPoolLimit,
+        safetyPoolUsed: 0,
+      }));
+
       navigation.dispatch(CommonActions.reset({ index: 0, routes: [{ name: 'ParentTabs' }] }));
     } catch (e: any) {
-      Alert.alert('Error', describeAmountError(e.message ?? 'Could not save Safety Pool. Please try again.'));
+      Alert.alert('Payment error', e.message ?? 'Could not process your payment. Please try again.');
     } finally {
       setSaving(false);
     }

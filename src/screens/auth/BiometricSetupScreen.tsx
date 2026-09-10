@@ -4,7 +4,7 @@ import {
   ActivityIndicator, Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { CommonActions } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../navigation/types';
@@ -79,7 +79,7 @@ export const BiometricSetupScreen: React.FC<Props> = ({ navigation }) => {
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
       <View style={styles.content}>
         <View style={styles.iconCircle}>
-          <Ionicons name="finger-print" size={56} color={GREEN_DARK} />
+          <MaterialCommunityIcons name="face-recognition" size={56} color={GREEN_DARK} />
         </View>
 
         <Text style={styles.title}>Use Face ID for{'\n'}faster login?</Text>
@@ -99,7 +99,7 @@ export const BiometricSetupScreen: React.FC<Props> = ({ navigation }) => {
           {loading
             ? <ActivityIndicator color="#1F2937" />
             : <>
-                <Ionicons name="finger-print" size={20} color="#1F2937" style={{ marginRight: 8 }} />
+                <MaterialCommunityIcons name="face-recognition" size={20} color="#1F2937" style={{ marginRight: 8 }} />
                 <Text style={styles.primaryBtnText}>Enable Face ID</Text>
               </>
           }

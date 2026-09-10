@@ -371,7 +371,12 @@ export const db = {
       p_password: password,
       p_device_id: deviceId,
     });
-    if (error) throw new Error('RPC error: ' + error.message + ' [' + error.code + ']');
+    if (error) {
+      // Server rejected because a parent session is active on this device and the
+      // target child belongs to a different parent (migration 068).
+      if (String(error.message).includes('not_authorized')) throw new Error('not_authorized');
+      throw new Error('RPC error: ' + error.message + ' [' + error.code + ']');
+    }
     if (!data) return null;
     return data as { child: Record<string, any>; parent: Record<string, any>; session_token: string; session_expires_at: string };
   },
@@ -459,7 +464,10 @@ export const db = {
     const { data, error } = await supabase.rpc('biometric_login_child', {
       p_child_id: childId, p_device_id: deviceId, p_biometric_token: biometricToken,
     });
-    if (error) throw new Error('biometric_login_child error: ' + error.message);
+    if (error) {
+      if (String(error.message).includes('not_authorized')) throw new Error('not_authorized');
+      throw new Error('biometric_login_child error: ' + error.message);
+    }
     return data ?? null;
   },
 
@@ -584,15 +592,6 @@ export const db = {
       p_session_token: sessionToken, p_device_id: deviceId,
     });
     if (error) throw new Error('remove_from_circle error: ' + error.message);
-  },
-
-  /** Set the initial safety pool amount (onboarding — sets absolute value). */
-  async setupSafetyPool(userId: string, amount: number): Promise<void> {
-    const { error } = await supabase
-      .from('parents')
-      .update({ safety_pool_limit: amount })
-      .eq('id', userId);
-    if (error) throw error;
   },
 
   /** Atomically add `amount` to the existing safety pool balance. Returns new total. */

@@ -2,7 +2,10 @@ import React, { createContext, useContext, useState, useEffect, useRef } from 'r
 import { cache } from '../lib/cache';
 import { db } from '../lib/database';
 import { fmtAmt } from '../lib/utils';
-import { setLastParentForPasscode, getLastParentForPasscode, getDeviceId } from '../lib/biometrics';
+import {
+  setLastParentForPasscode, getLastParentForPasscode, getDeviceId,
+  getLastChildForBiometric, isBiometricAvailable, hasBiometricForChild,
+} from '../lib/biometrics';
 import { saveChildSession, getChildSession, clearChildSession } from '../lib/childSession';
 import { deregisterCurrentPushToken, registerPushToken } from '../lib/notifications';
 import { navigationRef } from '../navigation';
@@ -128,6 +131,12 @@ interface AppContextType {
   setDefaultPaymentMethod: (id: string) => void;
   isOnboarded: boolean;
   setIsOnboarded: (v: boolean) => void;
+  // True once the initial AsyncStorage/SecureStore hydration has finished.
+  authHydrated: boolean;
+  // True when that hydration found a previously logged-in account on this device
+  // (a parent UUID or a child UUID) — used to route cold starts to
+  // "Who's logging in?" instead of the onboarding carousel.
+  hasStoredAccount: boolean;
   isChildLoggedIn: boolean;
   setIsChildLoggedIn: (v: boolean) => void;
   child: ChildProfile;
@@ -162,7 +171,6 @@ interface AppContextType {
   setOnboardingPassword: (pw: string) => void;
   saveOnboardingToDb: (childOverride?: { displayName?: string; username?: string; password?: string; mobile?: string; age?: number }) => Promise<void>;
   savePasscodeToDb: (passcode: string) => Promise<void>;
-  setupSafetyPool: (amount: number) => Promise<void>;
   topUpSafetyPool: (amount: number) => Promise<void>;
   saveAllowanceToDb: (amount: number, frequency: string, nextPayment: string | null, active: boolean) => Promise<void>;
   setMarketingNotifications: (value: boolean) => Promise<void>;
@@ -176,6 +184,11 @@ interface AppContextType {
   childDeviceId: string | null;
   handleSessionError: (code: string) => void;
   resetSession: () => Promise<void>;
+  // Session-timeout logout: ends the live parent + child sessions and sends the
+  // user back to "Who's logging in?", but keeps the cached parent/child profiles
+  // so the account tiles still render and the user re-authenticates with PIN /
+  // Face ID. Lighter than resetSession() — mirrors the manual logout buttons.
+  autoLogout: () => Promise<void>;
 }
 
 const defaultCircle: CircleMember[] = [];
@@ -199,6 +212,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [isOnboarded, setIsOnboarded] = useState(false);
   const [isChildLoggedIn, setIsChildLoggedIn] = useState(false);
+  const [authHydrated, setAuthHydrated] = useState(false);
+  const [hasStoredAccount, setHasStoredAccount] = useState(false);
   const [frozenAccount, setFrozenAccount] = useState(false);
   const [parentDebt, setParentDebt] = useState(0);
   const [circle, setCircle] = useState<CircleMember[]>(defaultCircle);
@@ -303,6 +318,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           // the first poll() call silently skips (token/devId still null).
         }
       }
+      let resolvedParentId: string | null = cachedUserId ?? null;
       if (cachedUserId) {
         setUserId(cachedUserId);
       } else {
@@ -311,7 +327,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         // use the persisted parent UUID as a fallback so PasscodeScreen can identify
         // the parent for PIN verification without requiring a fresh email login.
         const secureParentId = await getLastParentForPasscode();
-        if (secureParentId) setUserId(secureParentId);
+        if (secureParentId) {
+          setUserId(secureParentId);
+          resolvedParentId = secureParentId;
+        }
       }
       // Load session token, device ID, and cached activity feed in parallel.
       // All three state updates are deferred until here so React 18 can batch them
@@ -323,6 +342,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ]);
       const hydratedSessionToken = (stored as any)?.token ?? null;
       hydrated.current = true;
+      // A parent or child account is remembered on this device → cold starts should
+      // land on "Who's logging in?" (still PIN/Face ID gated), not the carousel.
+      setHasStoredAccount(!!(resolvedParentId || hydratedChildId));
+      setAuthHydrated(true);
       // Batch all state updates synchronously — React 18 merges into one render.
       if (cachedActivity?.length) setActivityFeed(cachedActivity as ActivityItem[]);
       if (hydratedChildId) setChildId(hydratedChildId);
@@ -349,7 +372,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           });
       }
     };
-    hydrate();
+    // Never leave the app stuck on the boot splash if hydration throws —
+    // fall through to the carousel (treated as a fresh install).
+    hydrate().catch(() => setAuthHydrated(true));
   }, []);
 
   // Keep the local cache in sync after every state update.
@@ -515,11 +540,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     await db.setParentPasscode(userId, pin);
   };
 
-  const setupSafetyPool = async (amount: number) => {
-    setParent(p => ({ ...p, safetyPoolLimit: amount, safetyPoolUsed: 0 }));
-    if (userId) await db.setupSafetyPool(userId, amount);
-  };
-
   const topUpSafetyPool = async (amount: number) => {
     if (!userId) return;
     const newLimit = await db.topUpSafetyPool(userId, amount);
@@ -569,17 +589,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (!childId) return;
     setActivityFetching(true); // show loading until first DB response
     let firstFetchDone = false;
-    const seenRequestIds = new Set<string>();
-    const seenResolvedIds = new Set<string>();
-    const seenFundedIds = new Set<string>();
-    const seenMoneyRequestIds = new Set<string>();
     const seenExpiredIds = new Set<string>();
-    // Each flag turns true after the FIRST async response for that call,
-    // so pre-existing DB rows are silently seeded without generating feed items.
-    let pendingFirstDone = false;
-    let resolvedFirstDone = false;
-    let fundedFirstDone = false;
-    let moneyReqFirstDone = false;
+    // Turns true after the first async response, so pre-existing expired
+    // requests are silently seeded without generating a feed item.
     let expiredFirstDone = false;
 
     const deadlineDaysToLabel = (days: number) => {
@@ -740,6 +752,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }).catch(onPollError);
 
       // 2. Incoming friend requests
+      // "X wants to join your circle" activity items are written server-side
+      // by send_circle_request (M067) — no client-side synthesis needed.
       db.getPendingRequests(childId, token, devId).then(requests => {
         const mapped = requests.map(r => ({
           requestId: r.request_id, id: r.id, displayName: r.display_name,
@@ -747,41 +761,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           trustScore: r.trust_score, createdAt: r.created_at,
           profileImageUrl: r.avatar_url ?? undefined,
         }));
-        mapped.forEach(req => {
-          if (!seenRequestIds.has(req.requestId)) {
-            seenRequestIds.add(req.requestId);
-            if (pendingFirstDone) {
-              addActivity({
-                id: `req_${req.requestId}`,
-                emoji: '👋',
-                text: `${req.displayName} wants to join your circle`,
-                time: 'Just now',
-                type: 'request' as const,
-              });
-            }
-          }
-        });
-        pendingFirstDone = true;
         setPendingRequests(mapped);
-      }).catch(onPollError);
-
-      // 3. Resolved sent requests (accepted / declined by others)
-      db.getResolvedSentRequests(childId, token, devId).then(resolved => {
-        resolved.forEach(req => {
-          if (!seenResolvedIds.has(req.request_id)) {
-            seenResolvedIds.add(req.request_id);
-            if (resolvedFirstDone && req.status === 'accepted') {
-              addActivity({
-                id: `resolved_${req.request_id}`,
-                emoji: '✅',
-                text: `${req.display_name} accepted your friend request`,
-                time: 'Just now',
-                type: 'joined' as const,
-              });
-            }
-          }
-        });
-        resolvedFirstDone = true;
       }).catch(onPollError);
 
       // 4. Active money requests from self + circle
@@ -790,33 +770,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const isExpired = (r: typeof moneyReqs[0]) =>
           r.status === 'pending' && new Date(r.expires_at).getTime() <= now;
 
+        // "funded your request" and "X requested £Y" activity items are written
+        // server-side by fund_money_request / create_money_request (M067) — only
+        // client-side-computed expiry (no DB row transition to hook) stays here.
         moneyReqs.forEach(r => {
-          // Detect own requests that just became funded → notify borrower
-          if (r.is_own && r.status === 'funded' && r.funded_by_name && !seenFundedIds.has(r.id)) {
-            seenFundedIds.add(r.id);
-            if (fundedFirstDone) {
-              addActivity({
-                id: `funded_${r.id}`,
-                emoji: '💚',
-                text: `${r.funded_by_name ?? 'Someone'} funded your request of £${fmtAmt(Number(r.amount))}`,
-                time: 'Just now',
-                type: 'funded' as const,
-              });
-            }
-          }
-          // Detect new pending requests from circle members → notify everyone in their circle
-          if (!r.is_own && r.status === 'pending' && !isExpired(r) && !seenMoneyRequestIds.has(r.id)) {
-            seenMoneyRequestIds.add(r.id);
-            if (moneyReqFirstDone) {
-              addActivity({
-                id: `moneyreq_${r.id}`,
-                emoji: '💸',
-                text: `${r.from_name} requested £${fmtAmt(Number(r.amount))}${r.reason?.trim() ? ` for ${r.reason.trim()}` : ''}`,
-                time: 'Just now',
-                type: 'request' as const,
-              });
-            }
-          }
           // Detect own pending requests that just expired → notify requester
           if (r.is_own && isExpired(r) && !seenExpiredIds.has(r.id)) {
             seenExpiredIds.add(r.id);
@@ -831,8 +788,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             }
           }
         });
-        fundedFirstDone = true;
-        moneyReqFirstDone = true;
         expiredFirstDone = true;
 
         // Keep activeRequestIdsRef current so the activity-feed merge can
@@ -917,10 +872,55 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     cache.clear();
   };
 
-  const handleSessionError = (code: string) => {
+  const autoLogout = async () => {
+    await supabase.auth.signOut().catch(() => {});
+    await deregisterCurrentPushToken().catch(() => {});
     clearSessionState(childIdRef.current, childSessionTokenRef.current);
-    setChildId(null); // stops the polling loop immediately
+    setChildId(null);          // stops the polling loop immediately
     setIsChildLoggedIn(false);
+    cache.clearBackgroundedAt();
+    if (navigationRef.isReady()) {
+      navigationRef.reset({ index: 0, routes: [{ name: 'WhoIsLoggingIn' as never }] });
+    }
+  };
+
+  const handleSessionError = async (code: string) => {
+    const priorChildId = childIdRef.current;
+    clearSessionState(priorChildId, childSessionTokenRef.current);
+    setIsChildLoggedIn(false);
+
+    // If Face ID is still set up for this child on this device, send them to the
+    // biometric unlock — a valid biometric login issues a fresh session token, so
+    // an expired/revoked session should NOT force a full username/password re-entry.
+    let biometricChildId: string | null = null;
+    try {
+      const lastChild = priorChildId ?? (await getLastChildForBiometric());
+      if (lastChild) {
+        const [available, hasBio] = await Promise.all([
+          isBiometricAvailable(),
+          hasBiometricForChild(lastChild),
+        ]);
+        if (available && hasBio) biometricChildId = lastChild;
+      }
+    } catch {
+      // fall through to password login
+    }
+
+    if (biometricChildId) {
+      setChildId(biometricChildId); // BiometricLoginScreen reads childId from context
+      if (navigationRef.isReady()) {
+        navigationRef.reset({
+          index: 1,
+          routes: [
+            { name: 'WhoIsLoggingIn' as never },
+            { name: 'BiometricLogin' as never },
+          ],
+        });
+      }
+      return;
+    }
+
+    setChildId(null); // stops the polling loop immediately
     if (navigationRef.isReady()) {
       navigationRef.reset({
         index: 1,
@@ -938,6 +938,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     <AppContext.Provider value={{
       paymentMethods, addPaymentMethod, removePaymentMethod, setDefaultPaymentMethod,
       isOnboarded, setIsOnboarded,
+      authHydrated, hasStoredAccount,
       isChildLoggedIn, setIsChildLoggedIn,
       child, setChild,
       childId, setChildId,
@@ -956,7 +957,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setOnboardingPassword,
       saveOnboardingToDb,
       savePasscodeToDb,
-      setupSafetyPool,
       topUpSafetyPool,
       saveAllowanceToDb,
       setMarketingNotifications,
@@ -970,6 +970,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       childDeviceId,
       handleSessionError,
       resetSession,
+      autoLogout,
     }}>
       {children}
     </AppContext.Provider>

@@ -191,7 +191,7 @@ const [sendMoneyVisible, setSendMoneyVisible] = useState(false);
           <View style={styles.childHeader}>
             <View style={styles.childAvatar}><Text style={{ fontSize: 28 }}>{child.avatarEmoji}</Text></View>
             <View>
-              <Text style={styles.childName}>{child.displayName}</Text>
+              <Text style={styles.childName}>{child.displayName.split(' ')[0]}</Text>
               <Text style={styles.childUsername}>@{child.username}</Text>
             </View>
             <View style={[styles.tierPill, { backgroundColor: `${tier.color}20` }]}>

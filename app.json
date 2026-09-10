@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Breesh",
-    "slug": "breesh",
+    "slug": "truzo",
     "version": "1.0.0",
     "scheme": "breesh",
     "orientation": "portrait",
@@ -15,7 +15,7 @@
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#E6F4FE"
+      "backgroundColor": "#F0C08A"
     },
     "ios": {
       "supportsTablet": true,
@@ -31,9 +31,8 @@
       "versionCode": 1,
       "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#F0C08A",
         "foregroundImage": "./assets/android-icon-foreground.png",
-        "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,

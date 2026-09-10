@@ -8,6 +8,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StripeProvider } from '@stripe/stripe-react-native';
 import { AppProvider } from './src/context/AppContext';
 import { AppNavigator } from './src/navigation';
+import { AppLockOverlay } from './src/components/AppLockOverlay';
 
 const STRIPE_KEY = process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? '';
 
@@ -16,7 +17,9 @@ export default function App() {
     <SafeAreaProvider>
       <StripeProvider publishableKey={STRIPE_KEY} merchantIdentifier="merchant.app.breesh">
         <AppProvider>
-          <AppNavigator />
+          <AppLockOverlay>
+            <AppNavigator />
+          </AppLockOverlay>
         </AppProvider>
       </StripeProvider>
     </SafeAreaProvider>

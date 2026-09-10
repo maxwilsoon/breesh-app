@@ -4,6 +4,7 @@ const KEYS = {
   PARENT:   '@breesh/parent',
   CHILD:    '@breesh/child',
   USER_ID:  '@breesh/userId',
+  BG_AT:    '@breesh/backgroundedAt',
   ACTIVITY: (childId: string) => `@breesh/activity/${childId}`,
 } as const;
 
@@ -42,6 +43,12 @@ export const cache = {
   loadChild:        <T>()                           => safeLoad<T>(KEYS.CHILD),
   saveUserId:       (id: string)                    => safeSave(KEYS.USER_ID, JSON.stringify(id)),
   loadUserId:       ()                              => safeLoad<string>(KEYS.USER_ID),
+  // Epoch ms of the moment the app was last sent to the background while a
+  // session was live. Persisted so the inactivity timer survives the OS killing
+  // the app process while backgrounded. Cleared on every foreground.
+  saveBackgroundedAt: (ts: number)                 => safeSave(KEYS.BG_AT, JSON.stringify(ts)),
+  loadBackgroundedAt: ()                            => safeLoad<number>(KEYS.BG_AT),
+  clearBackgroundedAt: ()                           => safeClear([KEYS.BG_AT]),
   saveActivityFeed: (childId: string, items: object[]) =>
     safeSave(KEYS.ACTIVITY(childId), JSON.stringify(items)),
   loadActivityFeed: (childId: string)               => safeLoad<any[]>(KEYS.ACTIVITY(childId)),

@@ -16,6 +16,14 @@ import { getExpoPushToken } from '../../lib/notifications';
 
 const GREEN_DARK = '#3D7A45';
 const PAD = ['1','2','3','4','5','6','7','8','9','','0','⌫'];
+// Mirrors the server-side blocklist in supabase/20260803_034_bcrypt_passcode.sql —
+// checked client-side too so a weak PIN is caught on the first entry, not after
+// the parent has typed it twice and hit the set_parent_passcode RPC.
+const WEAK_PINS = [
+  '000000','111111','222222','333333','444444',
+  '555555','666666','777777','888888','999999',
+  '123456','654321','012345','543210',
+];
 
 type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'ParentPasscode'>;
@@ -60,9 +68,10 @@ export const ParentPasscodeScreen: React.FC<Props> = ({ navigation, route }) => 
   };
   const { title, sub } = headings[mode];
 
-  const shake = () => {
+  const shake = (msg?: string) => {
     Vibration.vibrate(400);
     setError(true);
+    if (msg) setThrottleMsg(msg);
     setTimeout(() => { setCode(''); setError(false); }, 700);
   };
 
@@ -80,6 +89,10 @@ export const ParentPasscodeScreen: React.FC<Props> = ({ navigation, route }) => 
     if (next.length < 6) return;
 
     if (mode === 'create') {
+      if (WEAK_PINS.includes(next)) {
+        shake('That PIN is too simple. Please choose a less predictable 6-digit PIN.');
+        return;
+      }
       setTimeout(() => {
         navigation.push('ParentPasscode', { mode: 'confirm', pinToConfirm: next, onSuccess });
       }, 150);

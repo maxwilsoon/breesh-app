@@ -22,6 +22,13 @@ const rules = [
   { label: 'One number',             test: (p: string) => /\d/.test(p) },
 ];
 
+// One fixed message whenever the password fails any rule — it always lists
+// every requirement, so people see the same thing regardless of which part
+// is missing.
+const STRENGTH_MESSAGE =
+  "That password isn't strong enough — it needs at least 8 characters, " +
+  'including an uppercase letter, a lowercase letter and a number.';
+
 type Props = { navigation: NativeStackNavigationProp<RootStackParamList, 'Password'> };
 
 export const PasswordScreen: React.FC<Props> = ({ navigation }) => {
@@ -30,14 +37,24 @@ export const PasswordScreen: React.FC<Props> = ({ navigation }) => {
   const [confirm, setConfirm]         = useState('');
   const [showPass, setShowPass]       = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
-  const [confirmError, setConfirmError] = useState('');
 
-  const allValid   = rules.every(r => r.test(password));
-  const canContinue = allValid && confirm.length > 0;
+  const unmet = rules.filter(r => !r.test(password));
+  const bothFilled = password.length > 0 && confirm.length > 0;
+  const passwordsMatch = bothFilled && password === confirm;
+
+  // Feedback shown under the confirm box. Nothing shows until both boxes are
+  // filled: once they match we check strength; if they don't match (and the
+  // confirm box is at least as long as the password) we flag the mismatch.
+  const fieldError =
+    passwordsMatch && unmet.length > 0
+      ? STRENGTH_MESSAGE
+      : bothFilled && confirm.length >= password.length && password !== confirm
+        ? "Passwords don't match."
+        : '';
+
+  const canContinue = passwordsMatch && unmet.length === 0;
 
   const proceed = () => {
-    if (password !== confirm) { setConfirmError("Passwords don't match."); return; }
-    setConfirmError('');
     setOnboardingPassword(password);
     navigation.navigate('Mobile');
   };
@@ -72,13 +89,13 @@ export const PasswordScreen: React.FC<Props> = ({ navigation }) => {
           </View>
 
           {/* Confirm field */}
-          <View style={[styles.inputWrap, !!confirmError && styles.inputError]}>
+          <View style={[styles.inputWrap, !!fieldError && styles.inputError]}>
             <TextInput
               style={styles.input}
               placeholder="Confirm password"
               placeholderTextColor="#AEAEB2"
               value={confirm}
-              onChangeText={t => { setConfirm(t); if (confirmError) setConfirmError(''); }}
+              onChangeText={setConfirm}
               secureTextEntry={!showConfirm}
               autoCapitalize="none"
               autoCorrect={false}
@@ -87,7 +104,7 @@ export const PasswordScreen: React.FC<Props> = ({ navigation }) => {
               <Ionicons name={showConfirm ? 'eye-off-outline' : 'eye-outline'} size={22} color="#AEAEB2" />
             </TouchableOpacity>
           </View>
-          {!!confirmError && <Text style={styles.errorText}>{confirmError}</Text>}
+          {!!fieldError && <Text style={styles.errorText}>{fieldError}</Text>}
 
           <View style={{ flex: 1, minHeight: 24 }} />
 

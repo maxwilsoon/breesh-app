@@ -4,7 +4,7 @@ import {
   TextInput, TouchableOpacity, Alert, ActivityIndicator, ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../navigation/types';
 import { useApp } from '../../context/AppContext';
@@ -13,7 +13,7 @@ import { cache } from '../../lib/cache';
 import { registerPushToken } from '../../lib/notifications';
 import {
   getDeviceId, isBiometricAvailable,
-  saveBiometricForChild, isBiometricDeclined, clearBiometricDeclined,
+  saveBiometricForChild, hasBiometricForChild, isBiometricDeclined, clearBiometricDeclined,
   setLastChildForBiometric, setLastParentForPasscode,
 } from '../../lib/biometrics';
 import { saveChildSession } from '../../lib/childSession';
@@ -177,10 +177,15 @@ export const ChildLoginScreen: React.FC<Props> = ({ navigation, route }) => {
         try {
           const biometricsAvailable = await isBiometricAvailable();
           if (biometricsAvailable) {
-            if (row.biometric_enabled && row.last_device_id === deviceId) {
-              // Biometric was previously set up for this child on this device.
-              // Re-generate CSPRNG token, update the DB hash, and refresh SecureStore.
-              // This handles reinstall scenarios where the old SecureStore value is gone.
+            // Treat the child as already opted-in if the DB has biometric enabled
+            // OR a token for this child still exists in SecureStore on this device.
+            // (Don't require last_device_id to match — enableBiometric below rewrites
+            // it, and requiring a match forced a redundant "set up Face ID again"
+            // screen after a session expiry or device-id refresh.)
+            const enrolledLocally = await hasBiometricForChild(row.id);
+            if (row.biometric_enabled || enrolledLocally) {
+              // Re-generate the CSPRNG token, update the DB hash, and refresh
+              // SecureStore — silently. No setup screen, straight to the dashboard.
               const { tokenHash } = await saveBiometricForChild(row.id);
               await db.enableBiometric(row.id, deviceId, tokenHash, session_token);
               setBiometricEnabled(true);
@@ -202,7 +207,12 @@ export const ChildLoginScreen: React.FC<Props> = ({ navigation, route }) => {
       const msg = String(err?.message ?? err);
       if (__DEV__) console.error('[ChildLogin] error:', msg);
       // Alert.alert is a no-op on React Native Web — show an inline error instead.
-      if (msg.includes('rate_limit_exceeded')) {
+      if (msg.includes('not_authorized')) {
+        setLoginError(
+          "This account isn't linked to the parent signed in on this device. " +
+          'Ask a parent to sign out first, or use the child’s own device.'
+        );
+      } else if (msg.includes('rate_limit_exceeded')) {
         setLoginError('Too many failed attempts. Please wait a few minutes before trying again.');
       } else if (msg.includes('invalid_credentials') || msg.includes('incorrect')) {
         setUsernameError('Username or password incorrect.');
@@ -336,7 +346,7 @@ export const ChildLoginScreen: React.FC<Props> = ({ navigation, route }) => {
                 }}
                 activeOpacity={0.7}
               >
-                <Ionicons name="finger-print" size={16} color={GREEN_DARK} style={{ marginRight: 6 }} />
+                <MaterialCommunityIcons name="face-recognition" size={16} color={GREEN_DARK} style={{ marginRight: 6 }} />
                 <Text style={styles.bioSetupLinkText}>Set up Face ID</Text>
               </TouchableOpacity>
             )}

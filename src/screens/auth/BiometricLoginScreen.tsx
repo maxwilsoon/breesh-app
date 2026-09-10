@@ -4,7 +4,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { CommonActions } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../navigation/types';
@@ -136,7 +136,9 @@ export const BiometricLoginScreen: React.FC<Props> = ({ navigation }) => {
       const biometricToken = await getBiometricTokenForChild(childId);
       if (!biometricToken) {
         // No credential in SecureStore — biometric was never enrolled or was cleared.
-        await clearBiometricForChild(childId);
+        // Keep LAST_CHILD_KEY so the login flow still knows which child to re-enrol
+        // after a password sign-in.
+        await clearBiometricForChild(childId, { keepLastChild: true });
         setStatus('failed');
         setErrorMsg('Face ID is no longer set up. Please sign in with your password.');
         return;
@@ -146,7 +148,8 @@ export const BiometricLoginScreen: React.FC<Props> = ({ navigation }) => {
       if (!result) {
         // DB rejected — biometric_token_hash mismatch, disabled, or device changed.
         // Could be a legacy enrollment with no hash — requires re-enrolment.
-        await clearBiometricForChild(childId);
+        // Keep LAST_CHILD_KEY so the password fallback can re-enrol this child.
+        await clearBiometricForChild(childId, { keepLastChild: true });
         setStatus('failed');
         setErrorMsg('Face ID login is no longer active. Please sign in with your password.');
         return;
@@ -168,7 +171,13 @@ export const BiometricLoginScreen: React.FC<Props> = ({ navigation }) => {
     } catch (e) {
       if (__DEV__) console.warn('[BiometricLogin] authenticate error:', String(e));
       setStatus('failed');
-      if (String((e as any)?.message ?? '').includes('rate_limit_exceeded')) {
+      const eMsg = String((e as any)?.message ?? '');
+      if (eMsg.includes('not_authorized')) {
+        setErrorMsg(
+          "This account isn't linked to the parent signed in on this device. " +
+          'Ask a parent to sign out first, or use the child’s own device.'
+        );
+      } else if (eMsg.includes('rate_limit_exceeded')) {
         setErrorMsg('Too many login attempts. Please wait before trying again.');
       } else {
         setErrorMsg('Something went wrong. Please try again.');
@@ -198,7 +207,7 @@ export const BiometricLoginScreen: React.FC<Props> = ({ navigation }) => {
               ? <Ionicons name="checkmark-circle" size={56} color="#34C759" />
               : status === 'failed'
                 ? <Ionicons name="alert-circle" size={56} color="#FF3B30" />
-                : <Ionicons name="finger-print" size={56} color={GREEN_DARK} />
+                : <MaterialCommunityIcons name="face-recognition" size={56} color={GREEN_DARK} />
           }
         </View>
 

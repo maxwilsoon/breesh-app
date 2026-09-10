@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Platform } from 'react-native';
+import { Platform, View } from 'react-native';
 import { NavigationContainer, createNavigationContainerRef } from '@react-navigation/native';
 import * as Notifications from 'expo-notifications';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -44,12 +44,12 @@ import { BiometricLoginScreen } from '../screens/auth/BiometricLoginScreen';
 export const navigationRef = createNavigationContainerRef<RootStackParamList>();
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
-import { getDeviceId } from '../lib/biometrics';
+import { getDeviceId, setLastChildForBiometric } from '../lib/biometrics';
 import { saveChildSession } from '../lib/childSession';
 import { registerPushToken } from '../lib/notifications';
 
 export const AppNavigator = () => {
-  const { setChild, setChildId, setParent, setIsChildLoggedIn, setCircle, setPendingRequests, setChildSessionToken } = useApp();
+  const { setChild, setChildId, setParent, setIsChildLoggedIn, setCircle, setPendingRequests, setChildSessionToken, authHydrated, hasStoredAccount } = useApp();
   const [navReady, setNavReady] = useState(false);
   const notifSubRef = useRef<Notifications.EventSubscription | null>(null);
 
@@ -107,6 +107,9 @@ export const AppNavigator = () => {
         }));
       }
       setChildId(row.id);
+      // Persist the enrolled child in SecureStore so WhoIsLoggingInScreen can
+      // offer Face ID directly on the next visit (matches ChildLoginScreen).
+      setLastChildForBiometric(row.id).catch(() => {});
       if (session_token) {
         saveChildSession(row.id, session_token, session_expires_at ?? '').catch(() => {});
         setChildSessionToken(session_token);
@@ -169,10 +172,16 @@ export const AppNavigator = () => {
     return () => { notifSubRef.current?.remove(); notifSubRef.current = null; };
   }, [navReady]);
 
+  // Hold the boot splash colour until hydration resolves, so we can mount the
+  // navigator directly on the right first screen — no Carousel flash, no reset.
+  if (!authHydrated) {
+    return <View style={{ flex: 1, backgroundColor: '#F0C08A' }} />;
+  }
+
   return (
     <NavigationContainer ref={navigationRef} onReady={() => setNavReady(true)}>
       <Stack.Navigator
-        initialRouteName="Carousel"
+        initialRouteName={hasStoredAccount ? 'WhoIsLoggingIn' : 'Carousel'}
         screenOptions={{
           headerShown: false,
           animation: Platform.OS === 'web' ? 'none' : 'slide_from_right',
