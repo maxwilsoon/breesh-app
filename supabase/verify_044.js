@@ -7,7 +7,8 @@ if (!DATABASE_URL) throw new Error('DATABASE_URL not set');
 
 const PG = new Client({ connectionString: DATABASE_URL });
 
-const SECRET       = 'f490fb11cf23733f430d99ab3c3f31baca9113680287654b1ce997c42d67bfde';
+const SECRET = process.env.NOTIFICATION_SECRET;
+if (!SECRET) throw new Error('NOTIFICATION_SECRET not set');
 const SUPABASE_URL = 'https://biilrksornvoqtalftty.supabase.co';
 // Known UUIDs from the investigation
 const DAISY_UID = 'ac504406-e1e7-4b28-87e3-2a39ab58ee08';

@@ -7,7 +7,8 @@ if (!DATABASE_URL) throw new Error('DATABASE_URL not set');
 
 const PG = new Client({ connectionString: DATABASE_URL });
 
-const SECRET = 'f490fb11cf23733f430d99ab3c3f31baca9113680287654b1ce997c42d67bfde';
+const SECRET = process.env.NOTIFICATION_SECRET;
+if (!SECRET) throw new Error('NOTIFICATION_SECRET not set');
 const SUPABASE_URL = 'https://biilrksornvoqtalftty.supabase.co';
 
 let pass = 0;
@@ -95,7 +96,8 @@ async function callEdge(body, secret = SECRET) {
     ko('T09 Edge Function NOTIFICATION_SECRET matches DB secret',
        'Edge Function returned 401 — NOTIFICATION_SECRET env var in Edge Function does NOT match DB value. ' +
        'Go to Dashboard → Edge Functions → send-notification → Secrets and set: ' +
-       `NOTIFICATION_SECRET = ${SECRET}`);
+       'value intentionally not shown — set it in the Dashboard to match your own ' +
+       'process.env.NOTIFICATION_SECRET; do not print it.');
   } else {
     ko('T09 Edge Function NOTIFICATION_SECRET matches DB secret', `unexpected: ${JSON.stringify(r9.data)}`);
   }
@@ -125,7 +127,7 @@ async function callEdge(body, secret = SECRET) {
   if (fail > 0) {
     console.log('\nREMINDER: You must also set the Edge Function secret in the Supabase Dashboard:');
     console.log('  Dashboard → Edge Functions → send-notification → Secrets');
-    console.log(`  NOTIFICATION_SECRET = ${SECRET}`);
+    console.log('  NOTIFICATION_SECRET: value intentionally not printed — set it via Supabase Dashboard → Edge Functions → Secrets.');
     console.log('Then redeploy: supabase functions deploy send-notification --no-verify-jwt');
   }
   process.exit(fail > 0 ? 1 : 0);
