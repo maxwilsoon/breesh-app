@@ -4,7 +4,7 @@
 //   node supabase/apply_035.js
 //
 // Behaviour:
-//   1. Connects using direct config (same as apply_034.js — no env vars required).
+//   1. Connects using DATABASE_URL from the environment (no hardcoded credentials).
 //   2. Discovers TEST_PARENT_ID from the parents table (first row by id).
 //   3. Applies migration 035 SQL inside its own BEGIN/COMMIT block.
 //   4. Runs all 20 verification tests inline (fail-fast — stops on first failure).
@@ -19,14 +19,10 @@ const path = require('path');
 
 // ── Connection config (never printed) ─────────────────────────────────────────
 
-const DB_CONFIG = {
-  host:     'aws-0-eu-west-1.pooler.supabase.com',
-  port:     6543,
-  database: 'postgres',
-  user:     'postgres.biilrksornvoqtalftty',
-  password: '&Z3YcdQRVM&g$QN',
-  ssl:      { rejectUnauthorized: false },
-};
+const DATABASE_URL = process.env.DATABASE_URL;
+if (!DATABASE_URL) throw new Error('DATABASE_URL not set');
+
+const DB_CONFIG = { connectionString: DATABASE_URL };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 

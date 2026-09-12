@@ -2,14 +2,10 @@
 'use strict';
 const { Client } = require('pg');
 
-const PG = new Client({
-  host:     'aws-0-eu-west-1.pooler.supabase.com',
-  port:     5432,
-  database: 'postgres',
-  user:     'postgres.biilrksornvoqtalftty',
-  password: '&Z3YcdQRVM&g$QN',
-  ssl:      { rejectUnauthorized: false },
-});
+const DATABASE_URL = process.env.DATABASE_URL;
+if (!DATABASE_URL) throw new Error('DATABASE_URL not set');
+
+const PG = new Client({ connectionString: DATABASE_URL });
 
 let pass = 0, fail = 0;
 function ok(label)         { console.log(`  PASS  ${label}`); pass++; }

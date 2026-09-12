@@ -23,14 +23,10 @@ const { execSync } = require('child_process');
 const crypto       = require('crypto');
 const path         = require('path');
 
-const DB_CONFIG = {
-  host:     'aws-0-eu-west-1.pooler.supabase.com',
-  port:     6543,
-  database: 'postgres',
-  user:     'postgres.biilrksornvoqtalftty',
-  password: '&Z3YcdQRVM&g$QN',
-  ssl:      { rejectUnauthorized: false },
-};
+const DATABASE_URL = process.env.DATABASE_URL;
+if (!DATABASE_URL) throw new Error('DATABASE_URL not set');
+
+const DB_CONFIG = { connectionString: DATABASE_URL };
 
 let passed = 0;
 let failed = 0;

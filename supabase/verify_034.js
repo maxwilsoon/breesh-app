@@ -34,14 +34,10 @@
 
 const { Client } = require('pg');
 
-const DB = {
-  host: 'aws-0-eu-west-1.pooler.supabase.com',
-  port: 6543,
-  database: 'postgres',
-  user: 'postgres.biilrksornvoqtalftty',
-  password: '&Z3YcdQRVM&g$QN',
-  ssl: { rejectUnauthorized: false },
-};
+const DATABASE_URL = process.env.DATABASE_URL;
+if (!DATABASE_URL) throw new Error('DATABASE_URL not set');
+
+const DB = { connectionString: DATABASE_URL };
 
 const TEST_PIN   = '246813';  // valid 6-digit, not in weak list
 const WRONG_PIN  = '135792';
