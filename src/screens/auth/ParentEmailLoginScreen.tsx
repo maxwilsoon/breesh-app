@@ -11,7 +11,7 @@ import { useApp } from '../../context/AppContext';
 import { db } from '../../lib/database';
 import { cache } from '../../lib/cache';
 import { navigateToParentDash } from '../../lib/parentAccessGuard';
-import { setLastParentForPasscode } from '../../lib/biometrics';
+import { setLastParentForPasscode, getDeviceId } from '../../lib/biometrics';
 import { registerPushToken } from '../../lib/notifications';
 
 const GREEN = '#C8E8CB';
@@ -90,8 +90,13 @@ export const ParentEmailLoginScreen: React.FC<Props> = ({ navigation }) => {
         }));
       }
 
-      // Register parent device for push notifications (best-effort)
-      registerPushToken(userId, 'parent').catch(() => {});
+      // Register parent device for push notifications (best-effort).
+      // deviceId lets register_parent_device_token reclaim a stale token left
+      // behind on this physical device by a different parent test account
+      // (M070) — fetched here rather than blocking login on it.
+      getDeviceId()
+        .then(deviceId => registerPushToken(userId, 'parent', undefined, deviceId))
+        .catch(() => {});
 
       // Email + password is full authentication.
       // First-time parents (no passcode yet) must create their PIN.

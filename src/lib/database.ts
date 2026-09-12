@@ -275,7 +275,9 @@ export const db = {
     }>;
   },
 
-  async registerParentDeviceToken(expoPushToken: string, platform?: string, appVersion?: string): Promise<void> {
+  async registerParentDeviceToken(
+    expoPushToken: string, deviceId?: string, platform?: string, appVersion?: string,
+  ): Promise<void> {
     if (__DEV__) {
       const { data: { session } } = await supabase.auth.getSession();
       console.log('[ParentAuth] sessionExists:', !!session,
@@ -284,6 +286,7 @@ export const db = {
     }
     const { error } = await supabase.rpc('register_parent_device_token', {
       p_expo_push_token: expoPushToken,
+      p_device_id:       deviceId ?? null,
       p_platform:        platform ?? null,
       p_app_version:     appVersion ?? null,
     });
@@ -296,18 +299,21 @@ export const db = {
   /**
    * Registers a parent push token using a verified PIN instead of a Supabase Auth
    * session. Use this in the PIN-login flow (cold start / app restart) where the
-   * Supabase JWT is no longer in memory.  Returns true if the token was registered,
-   * false if the PIN is wrong. Throws 'rate_limit_exceeded' on too many attempts.
+   * Supabase JWT is no longer in memory.  Returns true if the PIN was correct
+   * (push-token registration is best-effort and does not affect this result —
+   * see register_parent_push_token_passcode's M070 header comment). Throws
+   * 'rate_limit_exceeded' on too many attempts.
    */
   async registerParentPushTokenWithPasscode(
     parentId: string, pin: string, expoPushToken: string,
-    platform?: string, appVersion?: string,
+    deviceId?: string, platform?: string, appVersion?: string,
   ): Promise<boolean> {
     if (__DEV__) console.log('[ParentPush] registrationAttempt (passcode path) — platform:', platform ?? Platform.OS);
     const { data, error } = await supabase.rpc('register_parent_push_token_passcode', {
       p_parent_id:       parentId,
       p_pin:             pin,
       p_expo_push_token: expoPushToken,
+      p_device_id:       deviceId ?? null,
       p_platform:        platform ?? null,
       p_app_version:     appVersion ?? null,
     });

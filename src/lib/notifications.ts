@@ -171,9 +171,10 @@ export async function registerPushToken(
   // Stage 2: register the token in the DB.
   try {
     if (userType === 'parent') {
-      if (__DEV__) console.log('[ParentPush] registrationAttempt — platform:', Platform.OS);
+      if (__DEV__) console.log('[ParentPush] registrationAttempt — platform:', Platform.OS, '| deviceId present:', !!deviceId);
       await db.registerParentDeviceToken(
         token,
+        deviceId,
         Platform.OS,
         Constants.expoConfig?.version ?? undefined,
       );
@@ -197,9 +198,22 @@ export async function registerPushToken(
   } catch (e: any) {
     const msg: string = e?.message ?? String(e);
     const prefix = userType === 'parent' ? '[ParentPush]' : '[ChildPush]';
-    if (__DEV__) console.warn(`${prefix} DB registrationError —`, msg, '| code:', (e as any)?.code ?? 'n/a');
+
+    if (msg.includes('token_owned_by_another_user')) {
+      // M070 narrowed the reclaim rules (same user / released token / same
+      // device after a staleness window) specifically so this should now be
+      // rare. Log unconditionally — not gated on __DEV__ — so a genuine,
+      // unexpected collision is never silently invisible in production, even
+      // though registration still fails open (non-fatal) below.
+      console.error(`${prefix} token_owned_by_another_user — unexpected push-token collision`,
+        '| userId prefix:', userId.slice(0, 8), '| deviceId present:', !!deviceId);
+    } else if (__DEV__) {
+      console.warn(`${prefix} DB registrationError —`, msg, '| code:', (e as any)?.code ?? 'n/a');
+    }
+
     // Re-throw child session errors so AppContext can route to login and clear the
-    // stale SecureStore token. Parent errors are non-fatal (best-effort registration).
+    // stale SecureStore token. All other errors (including ownership collisions)
+    // are non-fatal — a failed push registration must never block login.
     if (userType === 'child' && (
       msg.includes('child_session_revoked') ||
       msg.includes('child_session_expired') ||

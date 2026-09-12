@@ -10,6 +10,7 @@ import { colors } from '../../theme/colors';
 import { useApp } from '../../context/AppContext';
 import { db } from '../../lib/database';
 import { clearChildSession } from '../../lib/childSession';
+import { deregisterCurrentPushToken } from '../../lib/notifications';
 
 interface MenuItemProps {
   icon: keyof typeof Ionicons.glyphMap;
@@ -85,6 +86,13 @@ export const ProfileScreen: React.FC = () => {
             last
             onPress={() => {
               const doLogout = async () => {
+                // Deregister this device's push token BEFORE the session is revoked —
+                // deregister_child_device_token requires a still-valid child session.
+                // Without this, the device_tokens row stays active=true under this
+                // child, and the NEXT child to log in on this device gets rejected
+                // with token_owned_by_another_user when they try to register the
+                // same Expo push token.
+                await deregisterCurrentPushToken().catch(() => {});
                 if (childSessionToken) {
                   db.revokeChildSession(childSessionToken).catch(() => {});
                   setChildSessionToken(null);

@@ -29,6 +29,7 @@ interface NotificationRequest {
   actor_id?: string;   // user_id of the person who performed the action; filtered from recipients
   data?: {
     amount?: number;
+    balance?: number;
     request_id?: string;
     [key: string]: unknown;
   };
@@ -75,6 +76,14 @@ function fmtAmount(amount: number | undefined): string {
   return `£${s}`;
 }
 
+// Always shows two decimal places — used for the banking-style transaction
+// notifications (money_lent, money_funded, money_repaid, safety_pool_repayment),
+// which quote exact amounts and balances the way a bank statement line would.
+function fmtAmountFull(amount: number | undefined): string {
+  if (amount == null) return '';
+  return `£${amount.toFixed(2)}`;
+}
+
 function buildMessage(token: string, req: NotificationRequest): ExpoMessage | null {
   const sender = (req.sender_name ?? 'Someone').split(' ')[0];  // first name only
   const amount = fmtAmount(req.data?.amount);
@@ -102,13 +111,21 @@ function buildMessage(token: string, req: NotificationRequest): ExpoMessage | nu
       return { ...base, title: `💸 ${sender} needs money`, body: `${sender} is asking for ${amount}`,
                data: { type: req.type, screen: 'Circle', request_id: req.data?.request_id } };
 
-    case 'money_funded':
-      return { ...base, title: '💚 Money received!', body: `You received ${amount} from ${sender}`,
+    case 'money_funded': {
+      const amt = fmtAmountFull(req.data?.amount);
+      const balance = fmtAmountFull(req.data?.balance);
+      return { ...base, title: `💰 ${amt} received from ${sender}`,
+               body: balance ? `Your Breesh balance is now ${balance}.` : `You received ${amt} from ${sender}`,
                data: { type: req.type, screen: 'Home', request_id: req.data?.request_id } };
+    }
 
-    case 'money_lent':
-      return { ...base, title: '💸 Money sent', body: `You've lent ${amount} to ${sender}`,
+    case 'money_lent': {
+      const amt = fmtAmountFull(req.data?.amount);
+      const balance = fmtAmountFull(req.data?.balance);
+      return { ...base, title: `💸 ${amt} sent to ${sender}`,
+               body: balance ? `Your Breesh balance is now ${balance}.` : `You've lent ${amt} to ${sender}`,
                data: { type: req.type, screen: 'Home', request_id: req.data?.request_id } };
+    }
 
     case 'repayment_reminder':
       return { ...base, title: '⏰ Repayment due tomorrow', body: `You have 24 hours to repay ${amount} to ${sender}`,
@@ -118,23 +135,57 @@ function buildMessage(token: string, req: NotificationRequest): ExpoMessage | nu
       return { ...base, title: '⏰ Repayment due today', body: `You have 12 hours to repay ${amount} to ${sender}`,
                data: { type: req.type, screen: 'Home', request_id: req.data?.request_id } };
 
-    case 'money_repaid':
-      return { ...base, title: '✅ Repayment received', body: `You received a ${amount} repayment from ${sender}`,
+    case 'money_repaid': {
+      const amt = fmtAmountFull(req.data?.amount);
+      const balance = fmtAmountFull(req.data?.balance);
+      return { ...base, title: `✅ ${amt} repayment received`,
+               body: balance ? `${sender} has repaid your loan. Your Breesh balance is now ${balance}.`
+                              : `${sender} has repaid your loan.`,
                data: { type: req.type, screen: 'Home', request_id: req.data?.request_id } };
+    }
 
-    case 'loan_defaulted_lender':
-      return { ...base, title: '🛡️ Safety Pool paid out',
-               body: `You've been paid ${amount} from the Safety Pool — ${sender} missed their repayment`,
+    case 'repayment_sent': {
+      const amt = fmtAmountFull(req.data?.amount);
+      const balance = fmtAmountFull(req.data?.balance);
+      return { ...base, title: `✅ ${amt} repayment sent`,
+               body: balance ? `Your Breesh balance is now ${balance}.` : `You've repaid ${amt} to ${sender}`,
                data: { type: req.type, screen: 'Home', request_id: req.data?.request_id } };
+    }
+
+    case 'safety_pool_repayment': {
+      const amt = fmtAmountFull(req.data?.amount);
+      return { ...base, title: `🛡️ ${amt} covered by Safety Pool`, body: 'Your lender has been repaid.',
+               data: { type: req.type, screen: 'Home', request_id: req.data?.request_id } };
+    }
+
+    case 'parent_debt_repaid': {
+      const amt = fmtAmountFull(req.data?.amount);
+      const balance = fmtAmountFull(req.data?.balance);
+      return { ...base, title: `💳 ${amt} paid to clear your debt`,
+               body: balance ? `Your Breesh balance is now ${balance}.` : `${amt} was taken from your balance to clear your debt`,
+               data: { type: req.type, screen: 'Home' } };
+    }
+
+    case 'loan_defaulted_lender': {
+      const balance = fmtAmountFull(req.data?.balance);
+      return { ...base, title: '🛡️ Safety Pool paid out',
+               body: `You've been paid ${amount} from the Safety Pool — ${sender} missed their repayment.`
+                     + (balance ? ` Your Breesh balance is now ${balance}.` : ''),
+               data: { type: req.type, screen: 'Home', request_id: req.data?.request_id } };
+    }
 
     case 'loan_defaulted_borrower':
       return { ...base, title: '🔒 Account frozen',
                body: `You missed your ${amount} repayment to ${sender}. Your parent has been notified.`,
                data: { type: req.type, screen: 'Home', request_id: req.data?.request_id } };
 
-    case 'parent_transfer':
-      return { ...base, title: '💚 Money received!', body: `You received ${amount} from your parent`,
+    case 'parent_transfer': {
+      const balance = fmtAmountFull(req.data?.balance);
+      return { ...base, title: '💚 Money received!',
+               body: `You received ${amount} from your parent.`
+                     + (balance ? ` Your Breesh balance is now ${balance}.` : ''),
                data: { type: req.type, screen: 'Home' } };
+    }
 
     default:
       return null;

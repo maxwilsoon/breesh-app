@@ -10,7 +10,7 @@ import { RootStackParamList } from '../../navigation/types';
 import { useApp } from '../../context/AppContext';
 import { db } from '../../lib/database';
 import { navigateToParentDash } from '../../lib/parentAccessGuard';
-import { getLastParentForPasscode } from '../../lib/biometrics';
+import { getLastParentForPasscode, getDeviceId } from '../../lib/biometrics';
 import { supabase } from '../../lib/supabase';
 import { getExpoPushToken } from '../../lib/notifications';
 
@@ -168,9 +168,11 @@ export const ParentPasscodeScreen: React.FC<Props> = ({ navigation, route }) => 
         // Register push token (fire-and-forget).
         if (userId) {
           const pin = next;
-          getExpoPushToken()
-            .then(expoToken => {
-              if (expoToken) return db.registerParentPushTokenWithPasscode(userId, pin, expoToken, Platform.OS);
+          Promise.all([getExpoPushToken(), getDeviceId()])
+            .then(([expoToken, deviceId]) => {
+              if (expoToken) {
+                return db.registerParentPushTokenWithPasscode(userId, pin, expoToken, deviceId, Platform.OS);
+              }
             })
             .catch(() => {});
         }

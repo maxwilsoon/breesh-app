@@ -183,6 +183,12 @@ interface AppContextType {
   setChildSessionToken: (token: string | null) => void;
   childDeviceId: string | null;
   handleSessionError: (code: string) => void;
+  // One-shot flag: set when a session error lands the user back on
+  // "Who's logging in?" with no biometric fallback available. Consumed by
+  // WhoIsLoggingInScreen the next time it routes to ChildLogin, so the
+  // "Your session expired" banner still shows without auto-navigating there.
+  sessionExpiredNotice: boolean;
+  clearSessionExpiredNotice: () => void;
   resetSession: () => Promise<void>;
   // Session-timeout logout: ends the live parent + child sessions and sends the
   // user back to "Who's logging in?", but keeps the cached parent/child profiles
@@ -218,6 +224,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [parentDebt, setParentDebt] = useState(0);
   const [circle, setCircle] = useState<CircleMember[]>(defaultCircle);
   const [childId, setChildId] = useState<string | null>(null);
+  const [sessionExpiredNotice, setSessionExpiredNotice] = useState(false);
+  const clearSessionExpiredNotice = () => setSessionExpiredNotice(false);
   const [pendingRequests, setPendingRequests] = useState<PendingRequest[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>(defaultTransactions);
   const [activeRequests, setActiveRequests] = useState<ActiveRequest[]>(defaultRequests);
@@ -889,9 +897,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     clearSessionState(priorChildId, childSessionTokenRef.current);
     setIsChildLoggedIn(false);
 
-    // If Face ID is still set up for this child on this device, send them to the
-    // biometric unlock — a valid biometric login issues a fresh session token, so
-    // an expired/revoked session should NOT force a full username/password re-entry.
+    // If Face ID is still set up for this child on this device, keep them as the
+    // pre-selected/default tile on "Who's logging in?" so tapping it goes straight
+    // to Face ID — a valid biometric login issues a fresh session token, so an
+    // expired/revoked session should NOT force a full username/password re-entry.
+    // IMPORTANT: never navigate straight into BiometricLogin (or ChildLogin) here.
+    // A session error can fire during hydrate, before the user has touched
+    // anything, and jumping past "Who's logging in?" would auto-launch the native
+    // Face ID prompt (or the password form) with no user action — exactly the bug
+    // reported. Always land on WhoIsLoggingIn and let the user tap a tile.
     let biometricChildId: string | null = null;
     try {
       const lastChild = priorChildId ?? (await getLastChildForBiometric());
@@ -907,28 +921,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     if (biometricChildId) {
-      setChildId(biometricChildId); // BiometricLoginScreen reads childId from context
-      if (navigationRef.isReady()) {
-        navigationRef.reset({
-          index: 1,
-          routes: [
-            { name: 'WhoIsLoggingIn' as never },
-            { name: 'BiometricLogin' as never },
-          ],
-        });
-      }
-      return;
+      setChildId(biometricChildId); // WhoIsLoggingInScreen's child tile reads this
+    } else {
+      setChildId(null); // stops the polling loop immediately
+      setSessionExpiredNotice(true); // shown once ChildLogin is reached via a tap
     }
 
-    setChildId(null); // stops the polling loop immediately
     if (navigationRef.isReady()) {
-      navigationRef.reset({
-        index: 1,
-        routes: [
-          { name: 'WhoIsLoggingIn' as never },
-          { name: 'ChildLogin' as never, params: { sessionExpired: true } as never },
-        ],
-      });
+      navigationRef.reset({ index: 0, routes: [{ name: 'WhoIsLoggingIn' as never }] });
     }
   };
   // Keep ref current so poll() always calls the latest version without stale closure.
@@ -942,6 +942,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       isChildLoggedIn, setIsChildLoggedIn,
       child, setChild,
       childId, setChildId,
+      sessionExpiredNotice, clearSessionExpiredNotice,
       pendingRequests, setPendingRequests,
       parent, setParent,
       circle, setCircle,

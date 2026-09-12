@@ -23,7 +23,7 @@ const getInitials = (name: string) => {
 };
 
 export const WhoIsLoggingInScreen: React.FC<Props> = ({ navigation, route }) => {
-  const { parent, child, childId, setChildId } = useApp();
+  const { parent, child, childId, setChildId, sessionExpiredNotice, clearSessionExpiredNotice } = useApp();
   const newAccount = route.params?.newAccount ?? false;
   const childFirstName = (child.displayName || 'Child').split(' ')[0];
 
@@ -66,7 +66,8 @@ export const WhoIsLoggingInScreen: React.FC<Props> = ({ navigation, route }) => 
         if (__DEV__) console.warn('[WhoIsLoggingIn] goChild error:', String(e));
       }
     }
-    navigation.navigate('ChildLogin');
+    if (sessionExpiredNotice) clearSessionExpiredNotice();
+    navigation.navigate('ChildLogin', sessionExpiredNotice ? { sessionExpired: true } : undefined);
   };
 
   return (
