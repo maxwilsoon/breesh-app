@@ -1,8 +1,9 @@
 import React, { useEffect, useRef } from 'react';
 import {
   Modal, View, Text, StyleSheet, TouchableOpacity,
-  Animated, Dimensions,
+  Animated, Dimensions, Platform,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
 import { fmtAmt } from '../lib/utils';
@@ -23,11 +24,39 @@ interface Props {
 const { height: SCREEN_H } = Dimensions.get('window');
 const SHEET_H = 360;
 
-export const ConfirmSheet: React.FC<Props> = ({
+export const ConfirmSheet: React.FC<Props> = (props) => {
+  const { visible, onCancel } = props;
+  // Measured here, in the main app tree (outside the Modal) — react-native's
+  // Modal renders its children into a separate native window on Android, and
+  // that window's own inset measurement is unreliable (insets.bottom reads 0
+  // or stale values there even with a nested SafeAreaProvider). The nav bar
+  // height is a device-level constant, so grabbing it from the reliably-
+  // measured outer tree and passing it down works regardless of the Modal's
+  // own window quirks.
+  const insets = useSafeAreaInsets();
+  const extraBottomPad = Platform.OS === 'android' ? insets.bottom : 0;
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="none"
+      statusBarTranslucent
+      onRequestClose={onCancel}
+    >
+      <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={onCancel} />
+      <SheetBody {...props} extraBottomPad={extraBottomPad} />
+    </Modal>
+  );
+};
+
+const SheetBody: React.FC<Props & { extraBottomPad: number }> = ({
   visible, emoji, title, subtitle, amount, balanceAfter,
-  confirmLabel, confirmColor = '#2E7D32', onConfirm, onCancel,
+  confirmLabel, confirmColor = '#2E7D32', onConfirm, onCancel, extraBottomPad,
 }) => {
-  const slideY = useRef(new Animated.Value(SHEET_H)).current;
+  // iOS keeps its existing fixed height/padding untouched — extraBottomPad is
+  // always 0 there.
+  const sheetHeight = SHEET_H + extraBottomPad;
+  const slideY = useRef(new Animated.Value(sheetHeight)).current;
 
   useEffect(() => {
     if (visible) {
@@ -39,7 +68,7 @@ export const ConfirmSheet: React.FC<Props> = ({
       }).start();
     } else {
       Animated.timing(slideY, {
-        toValue: SHEET_H,
+        toValue: sheetHeight,
         duration: 200,
         useNativeDriver: true,
       }).start();
@@ -47,16 +76,7 @@ export const ConfirmSheet: React.FC<Props> = ({
   }, [visible]);
 
   return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="none"
-      statusBarTranslucent
-      onRequestClose={onCancel}
-    >
-      <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={onCancel} />
-
-      <Animated.View style={[styles.sheet, { transform: [{ translateY: slideY }] }]}>
+      <Animated.View style={[styles.sheet, { height: sheetHeight, paddingBottom: 32 + extraBottomPad, transform: [{ translateY: slideY }] }]}>
         <View style={styles.handle} />
 
         {/* Icon */}
@@ -96,7 +116,6 @@ export const ConfirmSheet: React.FC<Props> = ({
           <Text style={styles.cancelText}>Cancel</Text>
         </TouchableOpacity>
       </Animated.View>
-    </Modal>
   );
 };
 

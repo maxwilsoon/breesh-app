@@ -571,26 +571,23 @@ export const CircleScreen: React.FC = () => {
                         )}
                       </View>
 
-                      {/* Text — 3 lines matching the To fund tab layout */}
+                      {/* Text — one summary line + reason; wraps instead of truncating so the full message is always visible */}
                       <View style={{ flex: 1 }}>
                         {isOwnPending && (
                           <>
-                            <Text style={s.reqName}>Your Request</Text>
-                            <Text style={s.reqAmount}>You requested £{fmtAmt(req.amount)}</Text>
+                            <Text style={s.reqName}>You requested £{fmtAmt(req.amount)}</Text>
                             <Text style={s.reqSub}>{req.reasonEmoji} {req.reason}</Text>
                           </>
                         )}
                         {isOwnFunded && (
                           <>
-                            <Text style={s.reqName}>{req.fundedByName ?? 'Friend'}</Text>
-                            <Text style={s.reqAmount}>£{fmtAmt(req.amount)} borrowed</Text>
+                            <Text style={s.reqName}>{req.fundedByName ?? 'Friend'} lent you £{fmtAmt(req.amount)}</Text>
                             <Text style={s.reqSub}>{req.reasonEmoji} {req.reason}</Text>
                           </>
                         )}
                         {isFundedByMe && (
                           <>
-                            <Text style={s.reqName}>{req.fromName} owes you</Text>
-                            <Text style={s.reqAmount}>£{fmtAmt(req.amount)} outstanding</Text>
+                            <Text style={s.reqName}>{req.fromName} owes you £{fmtAmt(req.amount)}</Text>
                             <Text style={s.reqSub}>{req.reasonEmoji} {req.reason}</Text>
                           </>
                         )}

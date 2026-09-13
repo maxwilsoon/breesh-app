@@ -355,7 +355,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setHasStoredAccount(!!(resolvedParentId || hydratedChildId));
       setAuthHydrated(true);
       // Batch all state updates synchronously — React 18 merges into one render.
-      if (cachedActivity?.length) setActivityFeed(cachedActivity as ActivityItem[]);
+      if (cachedActivity?.length) {
+        // Defensive dedup: a cache written by an older build (before the poll's
+        // seenIds merge logic existed) could still hold a duplicate id, which
+        // would render as a duplicate React key until the first poll overwrites it.
+        const seen = new Set<string>();
+        const deduped = (cachedActivity as ActivityItem[]).filter(a => {
+          if (seen.has(a.id)) return false;
+          seen.add(a.id);
+          return true;
+        });
+        setActivityFeed(deduped);
+      }
       if (hydratedChildId) setChildId(hydratedChildId);
       if (hydratedSessionToken) setChildSessionToken(hydratedSessionToken);
       setChildDeviceId(devId);
@@ -610,10 +621,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return `${days}d`;
     };
     const formatCreatedAt = (iso: string) => {
-      const hours = (Date.now() - new Date(iso).getTime()) / 3600000;
-      if (hours < 1) return 'Just now';
-      if (hours < 24) return `${Math.floor(hours)}h ago`;
-      return `${Math.floor(hours / 24)}d ago`;
+      const seconds = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 1000));
+      if (seconds < 10) return 'Just now';
+      if (seconds < 60) return `${seconds}s ago`;
+      const minutes = Math.floor(seconds / 60);
+      if (minutes < 60) return `${minutes}m ago`;
+      const hours = Math.floor(minutes / 60);
+      if (hours < 24) return `${hours}h ago`;
+      const days = Math.floor(hours / 24);
+      if (days < 7) return `${days}d ago`;
+      const weeks = Math.floor(days / 7);
+      if (weeks < 5) return `${weeks}w ago`;
+      const months = Math.floor(days / 30);
+      if (months < 12) return `${months}mo ago`;
+      return `${Math.floor(days / 365)}y ago`;
     };
     const expiresInHours = (iso: string) =>
       Math.max(0, Math.round((new Date(iso).getTime() - Date.now()) / 3600000));
@@ -691,7 +712,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             }
 
             return true; // genuine not-yet-persisted optimistic item, keep it
-          });
+          }).map(a =>
+            // Recompute the relative time for still-optimistic items (e.g. "lent to"
+            // entries, which never get a matching DB row — fund_money_request only
+            // writes an activity_feed row for the borrower) so they don't stay
+            // frozen at "Just now" forever.
+            a.createdAt ? { ...a, time: formatCreatedAt(a.createdAt) } : a
+          );
           const seenIds = new Set<string>();
           const merged = [...optimistic, ...dbMapped]
             .sort((a, b) => {
