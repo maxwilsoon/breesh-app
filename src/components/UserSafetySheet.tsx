@@ -85,6 +85,11 @@ export const UserSafetySheet: React.FC<Props> = ({
           'Outstanding loan',
           `You can't block ${target.displayName} while you have an active loan between you. Repay or receive repayment first.`,
         );
+      } else if (msg.includes('active_request_outstanding')) {
+        Alert.alert(
+          'Pending money request',
+          `You can't block ${target.displayName} while there's an unfunded money request between you. Wait for it to be funded, cancelled, or expire first.`,
+        );
       } else {
         Alert.alert('Error', 'Could not block this user. Please try again.');
       }

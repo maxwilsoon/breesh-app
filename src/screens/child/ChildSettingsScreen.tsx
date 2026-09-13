@@ -132,6 +132,22 @@ export const ChildSettingsScreen: React.FC = () => {
             </View>
           </View>
         )}
+
+        {/* Privacy & Safety */}
+        <View style={styles.section}>
+          <Text style={styles.sectionHeader}>Privacy & Safety</Text>
+          <TouchableOpacity
+            style={[styles.row, styles.rowBorder]}
+            onPress={() => navigation.navigate('BlockedUsers' as never)}
+            activeOpacity={0.7}
+          >
+            <View style={styles.rowLeft}>
+              <Ionicons name="ban-outline" size={22} color="#DC2626" style={{ marginRight: 12 }} />
+              <Text style={styles.rowLabel}>Blocked Users</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
+          </TouchableOpacity>
+        </View>
       </ScrollView>
     </SafeAreaView>
   );

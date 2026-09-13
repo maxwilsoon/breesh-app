@@ -26,6 +26,7 @@ export type RootStackParamList = {
   ActivityFeed: undefined;
   AddFriends: undefined;
   ChildSettings: undefined;
+  BlockedUsers: undefined;
   PaymentMethods: undefined;
   ParentAccountDetails: undefined;
   ParentNotifications: undefined;

@@ -33,6 +33,7 @@ import { LeaderboardScreen } from '../screens/child/LeaderboardScreen';
 import { ActivityFeedScreen } from '../screens/child/ActivityFeedScreen';
 import { AddFriendsScreen } from '../screens/child/AddFriendsScreen';
 import { ChildSettingsScreen } from '../screens/child/ChildSettingsScreen';
+import { BlockedUsersScreen } from '../screens/child/BlockedUsersScreen';
 import { ProfileScreen } from '../screens/child/ProfileScreen';
 import { PaymentMethodsScreen } from '../screens/parent/PaymentMethodsScreen';
 import { ParentAccountDetailsScreen } from '../screens/parent/ParentAccountDetailsScreen';
@@ -214,6 +215,7 @@ export const AppNavigator = () => {
         <Stack.Screen name="ActivityFeed" component={ActivityFeedScreen} />
         <Stack.Screen name="AddFriends" component={AddFriendsScreen} options={{ animation: Platform.OS === 'web' ? 'none' : 'slide_from_bottom' }} />
         <Stack.Screen name="ChildSettings" component={ChildSettingsScreen} />
+        <Stack.Screen name="BlockedUsers" component={BlockedUsersScreen} />
         <Stack.Screen name="ChildProfile" component={ProfileScreen} />
         <Stack.Screen name="PaymentMethods" component={PaymentMethodsScreen} />
         <Stack.Screen name="ParentAccountDetails" component={ParentAccountDetailsScreen} />
